@@ -81,9 +81,6 @@
     .p2g .tbtn { border-color:rgba(24,85,232,.45); }
     .p2g .tbtn:active,.p2g .tbtn.held { background:rgba(24,85,232,.28); }
     @media (min-width:500px) { .tbtn{width:74px;height:74px} .tbtn.jump{height:84px} }
-
-    /* Multiplayer Modal */
-    #multiplayer-modal.hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -123,55 +120,6 @@
       <button class="tbtn" id="p2-right" aria-label="P2 Right">▶</button>
     </div>
   </div>
-
-  <!-- Multiplayer Connection Modal -->
-  <div id="multiplayer-modal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:1000; display:flex; align-items:center; justify-content:center; pointer-events:all;">
-    <div style="background:rgba(6,16,30,0.95); border:2px solid rgba(255,255,255,0.2); border-radius:20px; padding:30px; max-width:500px; width:90%; backdrop-filter:blur(14px); text-align:center;">
-      <h2 style="color:#fff; margin:0 0 20px; font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px;">⚽ LAN MULTIPLAYER</h2>
-      
-      <div id="mp-mode-select" style="display:block;">
-        <p style="color:rgba(255,255,255,0.8); margin-bottom:25px; font-size:14px;">Connect with another player on your LAN network</p>
-        <button id="mp-host-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(232,40,58,0.8); color:#fff; border:2px solid #e8283a; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">HOST GAME</button>
-        <button id="mp-join-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(24,85,232,0.8); color:#fff; border:2px solid #1855e8; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">JOIN GAME</button>
-        <button id="mp-single-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(255,255,255,0.1); color:#fff; border:2px solid rgba(255,255,255,0.3); border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">SINGLE PLAYER</button>
-      </div>
-
-      <div id="mp-host-screen" style="display:none;">
-        <p style="color:rgba(255,255,255,0.7); margin-bottom:15px; font-size:13px;">Your connection offer:</p>
-        <textarea id="mp-offer-text" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#0f0; border:1px solid rgba(0,255,0,0.3); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
-        <button id="mp-copy-offer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">COPY OFFER</button>
-        <p style="color:rgba(255,255,255,0.6); margin:15px 0 10px; font-size:12px;">Waiting for peer answer...</p>
-        <textarea id="mp-answer-text" placeholder="Paste peer's answer here" style="width:100%; height:80px; padding:10px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
-        <button id="mp-submit-answer" style="width:100%; padding:10px; margin:10px 0; background:#e8283a; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">SUBMIT ANSWER</button>
-        <button id="mp-back-host" style="width:100%; padding:10px; margin-top:10px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-weight:bold; cursor:pointer;">← BACK</button>
-      </div>
-
-      <div id="mp-join-screen" style="display:none;">
-        <p style="color:rgba(255,255,255,0.7); margin-bottom:15px; font-size:13px;">Paste host's connection offer:</p>
-        <textarea id="mp-offer-input" placeholder="Paste offer here" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
-        <button id="mp-process-offer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">PROCESS OFFER</button>
-        <p style="color:rgba(255,255,255,0.7); margin:15px 0 10px; font-size:12px;">Your answer (copy and send to host):</p>
-        <textarea id="mp-answer-out" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#0f0; border:1px solid rgba(0,255,0,0.3); border-radius:8px; font-family:monospace; font-size:11px; resize:none;" readonly></textarea>
-        <button id="mp-copy-answer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">COPY ANSWER</button>
-        <button id="mp-back-join" style="width:100%; padding:10px; margin-top:10px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-weight:bold; cursor:pointer;">← BACK</button>
-      </div>
-
-      <div id="mp-connecting-screen" style="display:none; text-align:center;">
-        <p style="color:#6ea0ff; font-size:16px; margin-bottom:20px;">🔗 Connecting...</p>
-        <div style="width:40px; height:40px; border:3px solid rgba(110,160,255,0.3); border-top-color:#6ea0ff; border-radius:50%; margin:0 auto 20px; animation:spin 1s linear infinite;"></div>
-        <p style="color:rgba(255,255,255,0.7); font-size:12px;">Waiting for peer connection</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Connection status indicator -->
-  <div id="mp-status" style="position:fixed; bottom:20px; right:20px; background:rgba(100,200,100,0.9); color:#fff; padding:10px 15px; border-radius:8px; font-weight:bold; font-size:12px; z-index:100; display:none;">🔗 Connected</div>
-
-  <style>
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  </style>
 
   <script src="game.js"></script>
 </body>

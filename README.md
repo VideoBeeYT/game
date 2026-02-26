@@ -35,7 +35,6 @@ Score 5 points to win the match! Bump the ball into your opponent's goal while d
 
 - **Streaks & Fire Mode:** Build consecutive wins to trigger "on fire" mode
 - **Power-ups:** Collect power-ups for temporary advantages
-- **🔗 LAN Multiplayer:** Play peer-to-peer with another player on the same network with minimal latency—no server needed!
 - **Responsive Design:** Works on desktop, tablet, and mobile devices
 
 ## 🚀 Getting Started
@@ -46,26 +45,7 @@ Score 5 points to win the match! Bump the ball into your opponent's goal while d
 
 No build process or dependencies required — it's pure HTML5 Canvas + JavaScript.
 
-## � LAN Multiplayer
-
-Play against a friend on the same network with minimal latency using **WebRTC peer-to-peer connection**!
-
-### How to Connect
-1. **Host Player:** Click "HOST GAME" → Copy the offer string
-2. **Guest Player:** Click "JOIN GAME" → Paste the offer → Get answer
-3. **Host Player:** Paste the answer back
-4. **Connected!** 🎮 Enjoy ultra-low-latency gameplay
-
-### Features
-- ✅ No server required (GitHub Pages only)
-- ✅ Direct peer-to-peer connection (~30ms latency on LAN)
-- ✅ Copy-paste connection codes (simple, no signup)
-- ✅ Plays great on school networks
-- ✅ Zero personal data sent anywhere
-
-**📖 See [LAN_MULTIPLAYER.md](./LAN_MULTIPLAYER.md) for detailed setup guide**
-
-## �📱 Responsive
+## 📱 Responsive
 
 - Desktop: Full keyboard controls
 - Mobile: Touch-friendly button controls

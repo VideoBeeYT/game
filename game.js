@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════
-//  SAHUR BALL — Enhanced Edition + LAN Multiplayer
+//  SAHUR BALL — Enhanced Edition
 // ════════════════════════════════════════════════════════
 
 const canvas   = document.getElementById("game");
@@ -23,213 +23,6 @@ if (isMobile) document.body.classList.add("is-mobile");
 let width = 0, height = 0;
 let running = false, roundOver = false, lastTime = 0;
 let audioUnlocked = false, audioCtx = null, skyGradient = null;
-
-// ═══════════════════════════════════════════════════════════════════
-//  MULTIPLAYER / WEBRTC
-// ═══════════════════════════════════════════════════════════════════
-const multiplayer = {
-  enabled: false,
-  isHost: false,
-  peerConnection: null,
-  dataChannel: null,
-  localOffer: null,
-  remoteAnswer: null,
-  connected: false,
-  syncInterval: null,
-  messageQueue: [],
-  lastReceivedState: {},
-  iceCandidates: [],
-  iceGatheringComplete: false,
-  waitingForCandidates: false,
-  lastSyncTime: 0,
-  syncInterval: null,
-};
-
-// Free STUN servers for NAT traversal
-const STUN_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-];
-
-function initMultiplayer(isHost) {
-  multiplayer.enabled = true;
-  multiplayer.isHost = isHost;
-  multiplayer.iceCandidates = [];
-  const config = { iceServers: STUN_SERVERS };
-  multiplayer.peerConnection = new RTCPeerConnection(config);
-
-  multiplayer.peerConnection.onicecandidate = (e) => {
-    if (e.candidate) {
-      multiplayer.iceCandidates.push(e.candidate.toJSON());
-    } else {
-      multiplayer.iceGatheringComplete = true;
-    }
-  };
-
-  if (isHost) {
-    multiplayer.dataChannel = multiplayer.peerConnection.createDataChannel("game", { ordered: true });
-    setupDataChannelHandlers(multiplayer.dataChannel);
-  } else {
-    multiplayer.peerConnection.ondatachannel = (e) => {
-      setupDataChannelHandlers(e.channel);
-    };
-  }
-
-  multiplayer.peerConnection.onconnectionstatechange = () => {
-    if (multiplayer.peerConnection.connectionState === "connected") {
-      multiplayer.connected = true;
-      showEvent("🔗 Peer connected!", 1.5);
-      closeMultiplayerModal();
-      showMpStatus();
-      // Send initial state sync
-      multiplayer.lastSyncTime = 0;
-      syncGameState();
-      // Initialize game if this is first connection
-      if (state.score[0] === 0 && state.score[1] === 0) {
-        resetMatch();
-      }
-    } else if (multiplayer.peerConnection.connectionState === "failed") {
-      multiplayer.connected = false;
-      showEvent("⚠️ Connection failed", 2);
-    }
-  };
-}
-
-function setupDataChannelHandlers(channel) {
-  multiplayer.dataChannel = channel;
-  
-  channel.onopen = () => {
-    console.log("Data channel opened");
-    multiplayer.connected = true;
-  };
-
-  channel.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      handleMultiplayerMessage(msg);
-    } catch (err) {
-      console.error("Failed to parse multiplayer message:", err);
-    }
-  };
-
-  channel.onclose = () => {
-    console.log("Data channel closed");
-    multiplayer.connected = false;
-  };
-}
-
-async function createOffer() {
-  const offer = await multiplayer.peerConnection.createOffer();
-  await multiplayer.peerConnection.setLocalDescription(offer);
-  multiplayer.iceGatheringComplete = false;
-  multiplayer.iceCandidates = [];
-  
-  // Wait a bit for ICE gathering
-  await new Promise(r => setTimeout(r, 2000));
-  
-  return JSON.stringify({
-    offer: offer,
-    candidates: multiplayer.iceCandidates,
-  });
-}
-
-async function createAnswer(offerStr) {
-  const { offer, candidates } = JSON.parse(offerStr);
-  await multiplayer.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-  
-  for (const cand of candidates) {
-    try {
-      await multiplayer.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-    } catch (err) {
-      console.error("Failed to add candidate:", err);
-    }
-  }
-  
-  const answer = await multiplayer.peerConnection.createAnswer();
-  await multiplayer.peerConnection.setLocalDescription(answer);
-  multiplayer.iceGatheringComplete = false;
-  multiplayer.iceCandidates = [];
-  
-  // Wait for ICE gathering
-  await new Promise(r => setTimeout(r, 2000));
-  
-  return JSON.stringify({
-    answer: answer,
-    candidates: multiplayer.iceCandidates,
-  });
-}
-
-async function acceptAnswer(answerStr) {
-  const { answer, candidates } = JSON.parse(answerStr);
-  await multiplayer.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  
-  for (const cand of candidates) {
-    try {
-      await multiplayer.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-    } catch (err) {
-      console.error("Failed to add candidate:", err);
-    }
-  }
-}
-
-function handleMultiplayerMessage(msg) {
-  if (msg.type === "state") {
-    multiplayer.lastReceivedState = msg.data;
-  } else if (msg.type === "ice") {
-    addIceCandidate(JSON.stringify(msg.candidate));
-  } else if (msg.type === "event") {
-    if (msg.eventType === "score") {
-      state.score = msg.score;
-      updateScore();
-    } else if (msg.eventType === "round-end") {
-      state.winner = msg.winner;
-      state.streak = msg.streak;
-    } else if (msg.eventType === "chaos") {
-      triggerChaosEvent(msg.roll);
-    }
-  }
-}
-
-function syncGameState() {
-  if (!multiplayer.connected || !multiplayer.dataChannel) return;
-  
-  // Only sync every 200ms to reduce bandwidth
-  const now = performance.now();
-  if (now - multiplayer.lastSyncTime < 200) return;
-  multiplayer.lastSyncTime = now;
-
-  const stateData = {
-    score: state.score,
-    time: state.time,
-    chaosTimer: state.chaosTimer,
-    winner: state.winner,
-    running: running,
-    roundOver: roundOver,
-  };
-
-  try {
-    multiplayer.dataChannel.send(JSON.stringify({
-      type: "state",
-      data: stateData,
-    }));
-  } catch (err) {
-    console.error("Failed to send game state:", err);
-  }
-}
-
-function broadcastEvent(eventType, eventData) {
-  if (!multiplayer.connected || !multiplayer.dataChannel) return;
-  try {
-    multiplayer.dataChannel.send(JSON.stringify({
-      type: "event",
-      eventType: eventType,
-      ...eventData,
-    }));
-  } catch (err) {
-    console.error("Failed to broadcast event:", err);
-  }
-}
 
 // ── State ─────────────────────────────────────────────────────────
 const state = {
@@ -314,7 +107,7 @@ const clouds = Array.from({ length:9 }, () => ({
 }));
 const ballSpriteCache = new Map();
 const hazardSpriteCache = new Map();
-const MAX_PARTICLES = 700;
+const MAX_PARTICLES = 550;
 
 const ROUND_CHALLENGES = [
   { text:"Challenge: No-jump round",      done:"No-jump cleared 🐐" },
@@ -322,6 +115,8 @@ const ROUND_CHALLENGES = [
   { text:"Challenge: Big impacts",        done:"Impact king 💥" },
   { text:"Challenge: Hazard pressure",    done:"Hazard survivor 🛡️" },
   { text:"Challenge: Don't touch foe",    done:"Ghost mode 👻" },
+  { text:"Challenge: Tiny beam gaming",   done:"Precision certified ✨" },
+  { text:"Challenge: Beating chaos",      done:"Chaos not found 😤" },
 ];
 
 // ── Powerup config ────────────────────────────────────────────────
@@ -361,9 +156,9 @@ function scheduleEffect(fn, ms) {
 }
 
 function addParticles(x, y, color, count=12, force=260) {
-  count = Math.max(4, Math.floor(count * 0.45));
+  count = Math.max(3, Math.floor(count * (particles.length > 400 ? 0.35 : 0.45)));
   force *= 0.82;
-  if (particles.length > MAX_PARTICLES) return;
+  if (particles.length + count > MAX_PARTICLES) return;
   for (let i=0; i<count; i++) {
     const a = Math.random() * Math.PI * 2;
     const speed = force * (0.3 + Math.random() * 0.7);
@@ -411,7 +206,6 @@ function updateScore() {
   rebuildPips(p2PipsEl, 1);
   updateFireBadge(0);
   updateFireBadge(1);
-  broadcastEvent("score", { score: state.score });
 }
 
 function rebuildPips(container, pid) {
@@ -572,15 +366,18 @@ function collectPowerup(pu, p) {
     foe.stunned = 2.2;
     addParticles(foe.x, foe.y, "#ffe44a", 18, 200);
     sfx(300, 0.15, "sawtooth", 0.04);
-    showEvent(`⚡ ${p.label} ZAPPED ${foe.label}! Opponent frozen! 🧊`, 1.8);
+    const zapMsg=pick([`⚡ ${p.label} ZAPPED ${foe.label}! ${foe.label} is now a popsicle 🧊`,`⚡ ${foe.label} took 1000 damage. Electricity: super effective.`,`⚡ ${foe.label} went from alive to NUMB in 0.3 seconds.`]);
+    showEvent(zapMsg, 1.8);
   }
   if (pu.type === "shield") {
     p.shielded = true;
-    showEvent(`🛡️ ${p.label} got a SHIELD! Next hit = free. 😌`, 1.6);
+    const shieldMsg=pick([`🛡️ ${p.label} got a SHIELD! Just tanked one hit like nothing.`,`🛡️ ${p.label} is now invincible (briefly). Speedrunning immortality.`,`🛡️ ${p.label}'s guardian angel showed up early.`]);
+    showEvent(shieldMsg, 1.6);
   }
   if (pu.type === "boost") {
     p.boostedUntil = state.time + 4;
-    showEvent(`🔥 ${p.label} is BOOSTED! TURBO LEGS ENGAGED.`, 1.6);
+    const boostMsg=pick([`🔥 ${p.label} is BOOSTED! Their PC got a performance update.`,`🔥 ${p.label} is NOT holding back. Pure zoom mode engaged.`,`🔥 ${p.label} became SPEED DEMON SUPREME.`]);
+    showEvent(boostMsg, 1.6);
   }
   if (pu.type === "swap") {
     const tempX=p.x, tempY=p.y, tempVx=p.vx, tempVy=p.vy;
@@ -588,16 +385,18 @@ function collectPowerup(pu, p) {
     foe.x=tempX; foe.y=tempY; foe.vx=tempVx*0.5; foe.vy=tempVy*0.5;
     addParticles(foe.x, foe.y, foe.color, 15, 280);
     sfx(800, 0.08, "square", 0.03);
-    showEvent(`🔀 ${p.label} used SWAP! ${foe.label} is having an identity crisis.`, 2);
+    const swapMsg=pick([`🔀 ${p.label} SWAPPED with ${foe.label}! Both confused now.`,`🔀 IDENTITY SWAPPED!! They're having an existential crisis rn.`,`🔀 ${foe.label} is having an OUT OF BODY EXPERIENCE.`]);
+    showEvent(swapMsg, 2);
   }
   if (pu.type === "giant") {
-    // grow self, opponent stays
     state.growUntil = Math.max(state.growUntil, state.time + 4.5);
-    showEvent(`🫧 ${p.label} goes GIANT! ${foe.label} is in danger. 😬`, 1.7);
+    const giantMsg=pick([`🫧 ${p.label} goes BIG. Like REALLY BIG. Monster energy unlocked.`,`🫧 ${p.label} is expanding their real estate. War crime speedrun.`,`🫧 ${foe.label} better start praying rn.`]);
+    showEvent(giantMsg, 1.7);
   }
   if (pu.type === "shrink_foe") {
     state.shrinkUntil = Math.max(state.shrinkUntil, state.time + 4);
-    showEvent(`🔫 ${p.label} shrunk ${foe.label}! Tiny opponent unlocked. 😂`, 1.8);
+    const shrinkMsg=pick([`🔫 ${foe.label} got DOWNSIZED to ant size. Nature's cruel.`,`🔫 ${foe.label} speedrunning the smol category.`,`🔫 ${p.label} said 'shrink' and ${foe.label} listened.`]);
+    showEvent(shrinkMsg, 1.8);
   }
 }
 
@@ -635,31 +434,30 @@ function queueUpcomingChaos() {
 
 function triggerChaosEvent(forcedRoll=null) {
   const roll = Number.isInteger(forcedRoll) ? forcedRoll : Math.floor(Math.random() * TOTAL_CHAOS);
-  broadcastEvent("chaos", { roll: roll });
   sfx(260+(roll%8)*45, 0.045, "square", 0.024);
 
   // ── Original 0-48 ────────────────────────────────────────────
-  if (roll===0)  { state.reverseUntil=Math.max(state.reverseUntil,state.time+4.4); showEvent("🔄 Controls reversed. Your brain is lagging.",3.1); return; }
-  if (roll===1)  { state.lowGravityUntil=Math.max(state.lowGravityUntil,state.time+5.5); showEvent("🌙 Moon gravity. Physics teacher is crying.",2.8); return; }
-  if (roll===2)  { const g=(Math.random()<.5?-1:1)*(260+Math.random()*240); for(const p of players)p.vx+=g; showEvent("💨 Wind cannon sneezed on everyone.",1.7); return; }
-  if (roll===3)  { state.sizeSwapUntil=Math.max(state.sizeSwapUntil,state.time+6.2); showEvent("↔️ Size swap. Big vs tiny. Life is unfair.",3.2); return; }
-  if (roll===4)  { state.stickyUntil=Math.max(state.stickyUntil,state.time+5); showEvent("🍯 Sticky platform. Cope and slide.",3); return; }
-  if (roll===5)  { state.turboUntil=Math.max(state.turboUntil,state.time+5); showEvent("⚡ TURBO ANKLES. Legs don't fail me now.",2.3); return; }
-  if (roll===6)  { state.showerUntil=Math.max(state.showerUntil,state.time+3.6); showEvent("☄️ Meteor shower! Not in the school syllabus.",2.3); return; }
-  if (roll===7)  { state.discoUntil=Math.max(state.discoUntil,state.time+5.4); showEvent("🪩 DISCO PHYSICS. Everything bounces wrong.",2.3); return; }
-  if (roll===8)  { for(const p of players){p.vy=-650;addParticles(p.x,p.y,p.color,15,350);sfx(520,.1,"sine",.04);} showEvent("🚀 BOING! Equal opportunity launching.",2); return; }
-  if (roll===9)  { platform.angVel=(Math.random()<.5?-1:1)*2.5; showEvent("🌀 Platform spinning like your excuses.",2.2); return; }
-  if (roll===10) { for(const p of players){p.x=Math.random()*width;p.y=Math.random()*height*.4;addParticles(p.x,p.y,p.color,20,400);sfx(800,.08,"square",.03);} showEvent("🌀 Teleported. Where even are you rn?",1.8); return; }
-  if (roll===11) { for(const p of players)p.vy=Math.abs(p.vy)*-.8; showEvent("⬆️ Gravity said no. Respectfully.",1.9); return; }
-  if (roll===12) { for(const p of players){p.vx*=1.8;p.vy*=1.5;} showEvent("💨 SPEED DEMON MODE! Slow down bro.",2); return; }
-  if (roll===13) { state.chaosTimer+=2; for(const p of players){p.vx=0;p.vy=0;} scheduleEffect(()=>{for(const p of players){p.vx+=(Math.random()-.5)*600;p.vy-=400;}},800); showEvent("🧊 FREEZE! ...RELEASE! Got played.",2.1); return; }
-  if (roll===14) { for(const p of players){const a=Math.random()*Math.PI*2,sp=350+Math.random()*250;p.vx=Math.cos(a)*sp;p.vy=Math.sin(a)*sp;addParticles(p.x,p.y,p.color,12,280);} showEvent("🎲 Random direction. Chaos is the plan.",1.8); return; }
-  if (roll===15) { state.stickyUntil=Math.max(state.stickyUntil,state.time+4.5); showEvent("🛢️ Oil spill! Wet floor sign was a warning.",2.2); return; }
-  if (roll===16) { state.showerUntil=Math.max(state.showerUntil,state.time+4); hazardSpawnTimer=.15; showEvent("⛈️ HAZARD STORM! Every direction is pain.",2.4); return; }
-  if (roll===17) { for(const p of players)addParticles(p.x,p.y,"#fff",10,200); state.shrinkUntil=Math.max(state.shrinkUntil,state.time+3.5); showEvent("🔫 Shrink ray! Pew pew. You're tiny now.",2); return; }
-  if (roll===18) { for(const p of players)addParticles(p.x,p.y,"#fff",10,200); state.growUntil=Math.max(state.growUntil,state.time+3.5); showEvent("🎈 Grow ray go BIG! Size does matter here.",2); return; }
-  if (roll===19) { const tx=players[0].x,ty=players[0].y; players[0].x=players[1].x;players[0].y=players[1].y;players[1].x=tx;players[1].y=ty; addParticles(players[0].x,players[0].y,players[0].color,15,300); addParticles(players[1].x,players[1].y,players[1].color,15,300); showEvent("🔀 Swap! Sudden identity crisis.",2.1); return; }
-  if (roll===20) { const v=Math.random()<.5?0:1; state.controlFlipUntil[v]=Math.max(state.controlFlipUntil[v],state.time+4); showEvent(`🕹️ ${players[v].label}'s controls are cooked.`,2.2); return; }
+  if (roll===0)  { state.reverseUntil=Math.max(state.reverseUntil,state.time+4.4); showEvent(pick(["🔄 Your brain has left the server. Controls reversed.","🔄 Who designed this chaos? Your fingers are confused."]),3.1); return; }
+  if (roll===1)  { state.lowGravityUntil=Math.max(state.lowGravityUntil,state.time+5.5); showEvent(pick(["🌙 Welcome to the moon. Physics class LIED.","🌙 Gravity said 'nah fam, I'm out.'"]),2.8); return; }
+  if (roll===2)  { const g=(Math.random()<.5?-1:1)*(260+Math.random()*240); for(const p of players)p.vx+=g; showEvent("💨 THE WIND SAID MOVE. You have no choice.",1.7); return; }
+  if (roll===3)  { state.sizeSwapUntil=Math.max(state.sizeSwapUntil,state.time+6.2); showEvent("↔️ Everyone got their sizes mixed up. Chaos is the result.",3.2); return; }
+  if (roll===4)  { state.stickyUntil=Math.max(state.stickyUntil,state.time+5); showEvent("🍯 The platform is STICKY. Oil spill but make it worse.",3); return; }
+  if (roll===5)  { state.turboUntil=Math.max(state.turboUntil,state.time+5); showEvent("⚡ TURBO ACTIVATED. Your legs forgot how to obey gravity.",2.3); return; }
+  if (roll===6)  { state.showerUntil=Math.max(state.showerUntil,state.time+3.6); showEvent("☄️ INCOMING SPACE ROCKS. This is not a drill.",2.3); return; }
+  if (roll===7)  { state.discoUntil=Math.max(state.discoUntil,state.time+5.4); showEvent("🪩 DISCO MODE ACTIVATED. Everything is RUBBER NOW.",2.3); return; }
+  if (roll===8)  { for(const p of players){p.vy=-650;addParticles(p.x,p.y,p.color,15,350);sfx(520,.1,"sine",.04);} showEvent("🚀 YEEEEET MODE. Equal opportunity catapult.",2); return; }
+  if (roll===9)  { platform.angVel=(Math.random()<.5?-1:1)*2.5; showEvent("🌀 The platform has a seizure. Hold tight.",2.2); return; }
+  if (roll===10) { for(const p of players){p.x=Math.random()*width;p.y=Math.random()*height*.4;addParticles(p.x,p.y,p.color,20,400);sfx(800,.08,"square",.03);} showEvent("🌀 ZIP ZAPPED TO RANDOM LOCATIONS. Surprise!!",1.8); return; }
+  if (roll===11) { for(const p of players)p.vy=Math.abs(p.vy)*-.8; showEvent("⬆️ Gravity said NOPE. You going up NOW.",1.9); return; }
+  if (roll===12) { for(const p of players){p.vx*=1.8;p.vy*=1.5;} showEvent("💨 SPEED BOOST. Accidentally. You're welcome.",2); return; }
+  if (roll===13) { state.chaosTimer+=2; for(const p of players){p.vx=0;p.vy=0;} scheduleEffect(()=>{for(const p of players){p.vx+=(Math.random()-.5)*600;p.vy-=400;}},800); showEvent("🧊 FROZEN IN TIME... then released like a spring.",2.1); return; }
+  if (roll===14) { for(const p of players){const a=Math.random()*Math.PI*2,sp=350+Math.random()*250;p.vx=Math.cos(a)*sp;p.vy=Math.sin(a)*sp;addParticles(p.x,p.y,p.color,12,280);} showEvent("🎲 Random direction speedrun any%. GO.",1.8); return; }
+  if (roll===15) { state.stickyUntil=Math.max(state.stickyUntil,state.time+4.5); showEvent("🛢️ OIL SPILL. Enjoy your new skating experience.",2.2); return; }
+  if (roll===16) { state.showerUntil=Math.max(state.showerUntil,state.time+4); hazardSpawnTimer=.15; showEvent("⛈️ HAZARD APOCALYPSE INCOMING. RUN FOR YOUR LIVES.",2.4); return; }
+  if (roll===17) { for(const p of players)addParticles(p.x,p.y,"#fff",10,200); state.shrinkUntil=Math.max(state.shrinkUntil,state.time+3.5); showEvent("🔫 MINI RAY INCOMING. You're going small, kiddo.",2); return; }
+  if (roll===18) { for(const p of players)addParticles(p.x,p.y,"#fff",10,200); state.growUntil=Math.max(state.growUntil,state.time+3.5); showEvent("🎈 MEGA GROWTH. You're now the threat.",2); return; }
+  if (roll===19) { const tx=players[0].x,ty=players[0].y; players[0].x=players[1].x;players[0].y=players[1].y;players[1].x=tx;players[1].y=ty; addParticles(players[0].x,players[0].y,players[0].color,15,300); addParticles(players[1].x,players[1].y,players[1].color,15,300); showEvent("🔀 POSITIONS SWAPPED. Absolute confusion achieved.",2.1); return; }
+  if (roll===20) { const v=Math.random()<.5?0:1; state.controlFlipUntil[v]=Math.max(state.controlFlipUntil[v],state.time+4); showEvent(`🕹️ ${players[v].label}'s controls just got SCRAMBLED. Adapt or die.`,2.2); return; }
   if (roll===21) { for(const p of players)p.spinVel=(Math.random()<.5?-1:1)*8; showEvent("💫 SPIN SPIN SPIN SPIN SPIN SPIN",2); return; }
   if (roll===22) { for(const p of players){const dx=width*.5-p.x,dy=height*.5-p.y,d=Math.sqrt(dx*dx+dy*dy)+1;p.vx+=(dx/d)*600;p.vy+=(dy/d)*600;} showEvent("🕳️ Black hole says come here. NOW.",2.1); return; }
   if (roll===23) { state.slowMotionUntil=Math.max(state.slowMotionUntil||0,state.time+3.2); showEvent("⏱️ Time slows... like Monday mornings.",2); return; }
@@ -1109,6 +907,11 @@ function updatePlayers(dt) {
           `${p.label} refuses to fall off. Respect honestly.`,
           `${p.label} is on 1% HP and thriving.`,
           `${p.label} touched the void. Came back. Sent back down.`,
+          `CLUTCH!!! ${p.label} saying NO to gravity.`,
+          `${p.label} pulled the impossible. They're a wizard.`,
+          `${p.label} said "not today satan." Not today indeed.`,
+          `${p.label} speedrunning the comeback% category.`,
+          `${p.label} just made their teacher proud somewhere.`,
         ];
         showEvent(pick(clutchLines),1.05);
         sfx(690,.06,"triangle",.04);
@@ -1218,7 +1021,7 @@ function updateHazards(dt) {
 
         sfx(h.type==="meteor"?80:h.type==="spike"?320:h.type==="bomb"?140:h.type==="spring"?460:210,.12,"sawtooth",.04);
 
-        if(state.hitCommentCd<=0&&Math.random()<.25){
+        if(state.hitCommentCd<=0&&Math.random()<.32){
           const jokes=[
             `${p.label} got cooked. 💀`,`${p.label} walked straight into that.`,
             `${p.label} took that personally.`,`${p.label} launched into orbit.`,
@@ -1228,6 +1031,11 @@ function updateHazards(dt) {
             `${p.label} just got absolutely yeeted.`,`${p.label} could NOT dodge a parked car.`,
             `${p.label} speedrunning the fall%.`,`${p.label} thought they were safe. They were not.`,
             `${p.label} needs to see a doctor after that.`,`${p.label} technically flying. Downward.`,
+            `${p.label} experienced PAIN. Raw suffering.`,`${p.label} = ☠️.`,
+            `OUCH. ${p.label} felt that in their soul.`,`${p.label} eating canvas for breakfast.`,
+            `${p.label} made a poor life choice just now.`,`${p.label} is having NO fun.`,
+            `This is fine. - ${p.label}`,`${p.label}'s parents are crying somewhere.`,
+            `${p.label} just witnessed physics in real time.`,`${p.label} collided with destiny. Destiny won.`,
           ];
           showEvent(pick(jokes),.95);
           state.hitCommentCd=1.1;
@@ -1294,14 +1102,18 @@ function checkRoundEnd() {
 
     if(state.score[winnerId]>=state.winScore){
       state.winner=winnerId;
-      broadcastEvent("round-end", { winner: winnerId, streak: state.streak });
-      const finisher=[
-        `${players[winnerId].label} IS THE SAHUR BALL CHAMPION! 🏆`,
-        `${players[winnerId].label} WINS IT! ${players[loser].label} is absolutely cooked. 💀`,
-        `CERTIFIED GOAT. ${players[winnerId].label} takes the whole set!`,
-        `${players[loser].label} exits the tournament. ${players[winnerId].label} SUPREMACY. 👑`,
-        `${players[winnerId].label} WINS. ${players[loser].label} needs to sit down and think about their life.`,
-      ];
+    const finisher=[
+      `${players[winnerId].label} IS THE SAHUR BALL CHAMPION! 🏆`,
+      `${players[winnerId].label} WINS IT! ${players[loser].label} is absolutely cooked. 💀`,
+      `CERTIFIED GOAT. ${players[winnerId].label} takes the whole set!`,
+      `${players[loser].label} exits the tournament. ${players[winnerId].label} SUPREMACY. 👑`,
+      `${players[winnerId].label} WINS. ${players[loser].label} needs to sit down and think about their life.`,
+      `${players[winnerId].label}: UNDEFEATED. UNBOTHERED. MOISTURIZED. ✨`,
+      `${players[loser].label} has been eliminated. No survivors.`,
+      `VICTORY ROYALE: ${players[winnerId].label}. ${players[loser].label} was NOT the impostor.`,
+      `${players[winnerId].label} is THAT GUY. Story of the match.`,
+      `MATCH OVER. ${players[winnerId].label} > ${players[loser].label}. Math checks out.`,
+    ];
       showEvent(pick(finisher),3.5);
       triggerFlash("255,235,140",.2);
       const confettiColors=["#ff6e7d","#6ea0ff","#ffdc5e","#7fffb6","#ff9f58","#c879ff","#ffffff"];
@@ -1323,6 +1135,14 @@ function checkRoundEnd() {
       `${players[loser].label} donated a point. So generous. 🫡`,
       `${players[winnerId].label} clocked out. ${players[loser].label} fell out.`,
       `${players[loser].label} hit that L pose perfectly. 🫠`,
+      `${players[loser].label} just rage-quit reality.`,
+      `${players[winnerId].label} = skill. ${players[loser].label} = ?`,
+      `Better luck next time ${players[loser].label}. You'll need it.`,
+      `${players[loser].label}: *falls* 🤸 "It's part of my strategy."`,
+      `${players[winnerId].label} is what peak performance looks like.`,
+      `${players[loser].label} just broke the world record for fastest off.`,
+      `Certified ${players[winnerId].label} W. ${players[loser].label} L.`,
+      `${players[loser].label} tried their best. It wasn't enough. 😬`,
     ];
     let msg=pick(hype);
 
@@ -1392,9 +1212,6 @@ function update(dt) {
     state.chaosTimer=2.4+Math.random()*2.1;
     state.chaosWarningLead=randomChaosWarningLead();
   }
-
-  // Sync multiplayer state
-  syncGameState();
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -1404,6 +1221,7 @@ function update(dt) {
 function drawBackground() {
   ctx.clearRect(0,0,width,height);
   const disco=isEffectOn(state.discoUntil);
+  const suddenDeath=state.suddenDeath;
 
   if(disco){
     const t=state.time;
@@ -1412,14 +1230,21 @@ function drawBackground() {
     dg.addColorStop(.5,`hsl(${(t*40+120)%360},80%,58%)`);
     dg.addColorStop(1,`hsl(${(t*40+240)%360},80%,50%)`);
     ctx.fillStyle=dg;
+  } else if(suddenDeath){
+    const g=ctx.createLinearGradient(0,0,0,height);
+    g.addColorStop(0,"#5a1a1a");
+    g.addColorStop(.4,"#4a1414");
+    g.addColorStop(1,"#2a0a0a");
+    ctx.fillStyle=g;
   } else {
     ctx.fillStyle=skyGradient||"#83cff0";
   }
   ctx.fillRect(0,0,width,height);
 
-  // Sudden death red sky tint
+  // Sudden death pulsing effect
   if(state.suddenDeath){
-    ctx.fillStyle="rgba(180,0,0,0.28)";
+    const pulse=0.15+0.08*Math.sin(state.time*3.5);
+    ctx.fillStyle=`rgba(200,20,20,${pulse})`;
     ctx.fillRect(0,0,width,height);
   }
 
@@ -1477,18 +1302,10 @@ function drawPlatform() {
   ctx.translate(platform.pivot.x,platform.pivot.y);
   ctx.rotate(platform.angle);
 
-  // Shadow
-  ctx.fillStyle="rgba(0,0,0,.22)";
-  ctx.beginPath();
-  ctx.ellipse(0,platform.thickness*.5+16,platform.length*.52,10,0,0,Math.PI*2);
-  ctx.fill();
-
-  if(disco){ ctx.shadowColor=`hsl(${state.time*90%360},100%,60%)`; ctx.shadowBlur=22; }
-  if(state.suddenDeath){ ctx.shadowColor="#ff2020"; ctx.shadowBlur=28; }
-
   const beam=ctx.createLinearGradient(-platform.length*.5,-platform.thickness*.5,platform.length*.5,platform.thickness*.5);
   if(state.suddenDeath){
-    beam.addColorStop(0,"#3a0000"); beam.addColorStop(.5,"#6a0808"); beam.addColorStop(1,"#3a0000");
+    const pulse=0.8+0.2*Math.sin(state.time*4);
+    beam.addColorStop(0,`rgba(80,0,0,${pulse})`); beam.addColorStop(.5,`rgba(150,20,20,${pulse})`); beam.addColorStop(1,`rgba(80,0,0,${pulse})`);
   } else if(disco){
     beam.addColorStop(0,"#3a1a6a"); beam.addColorStop(.5,"#5a2090"); beam.addColorStop(1,"#3a1a6a");
   } else {
@@ -1496,7 +1313,6 @@ function drawPlatform() {
   }
   ctx.fillStyle=beam;
   ctx.fillRect(-platform.length*.5,-platform.thickness*.5,platform.length,platform.thickness);
-  ctx.shadowBlur=0;
 
   ctx.fillStyle=disco?"rgba(255,255,255,.22)":"rgba(255,255,255,.14)";
   ctx.fillRect(-platform.length*.5,-platform.thickness*.5,platform.length,3);
@@ -1579,7 +1395,7 @@ function getHazardSprite(type,radius){
   const r=Math.max(10,radius); const key=`${type}|${r}`;
   let sprite=hazardSpriteCache.get(key);
   if(sprite) return sprite;
-  if(hazardSpriteCache.size>120) hazardSpriteCache.clear();
+  if(hazardSpriteCache.size>80) hazardSpriteCache.clear();
   const size=Math.max(32,Math.ceil(r*2.8));
   const sc=document.createElement("canvas"); sc.width=sc.height=size;
   const c=sc.getContext("2d"); const cx=size*.5,cy=size*.5;
@@ -1601,7 +1417,6 @@ function getHazardSprite(type,radius){
 function drawHazards(){
   for(const h of hazards){
     if(h.x<-h.radius*2||h.x>width+h.radius*2||h.y<-h.radius*2||h.y>height+h.radius*2) continue;
-    ctx.beginPath();ctx.arc(h.x+2,h.y+4,h.radius*.95,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.16)";ctx.fill();
     const sp=getHazardSprite(h.type,Math.round(h.radius));
     ctx.save();ctx.translate(h.x,h.y);ctx.rotate(h.spin);ctx.drawImage(sp,-sp.width*.5,-sp.height*.5);ctx.restore();
   }
@@ -1641,7 +1456,7 @@ function getBallSprite(p){
   const key=`${p.color}|${p.number}|${r}`;
   let sprite=ballSpriteCache.get(key);
   if(sprite) return sprite;
-  if(ballSpriteCache.size>48) ballSpriteCache.clear();
+  if(ballSpriteCache.size>32) ballSpriteCache.clear();
   const size=r*2+6;
   const sc=document.createElement("canvas"); sc.width=sc.height=size;
   const sctx=sc.getContext("2d"); const cx=size*.5,cy=size*.5;
@@ -1675,12 +1490,6 @@ function drawBall(p){
       ctx.fillStyle=`hsl(${hue},100%,60%)`;ctx.globalAlpha=.7;ctx.fill();
     }
     ctx.globalAlpha=1;
-    // Core glow
-    ctx.save();
-    ctx.shadowColor="#ff8800"; ctx.shadowBlur=18;
-    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
-    ctx.fillStyle="transparent"; ctx.fill();
-    ctx.restore();
   }
 
   // Shield ring
@@ -1689,7 +1498,6 @@ function drawBall(p){
     ctx.beginPath();ctx.arc(p.x,p.y,r*1.35*pulse,0,Math.PI*2);
     ctx.strokeStyle=`rgba(74,230,255,${.7+.3*Math.sin(state.time*6)})`;
     ctx.lineWidth=3; ctx.stroke();
-    ctx.shadowColor="#4ae6ff"; ctx.shadowBlur=14;
   }
 
   // Frozen overlay
@@ -1700,15 +1508,11 @@ function drawBall(p){
     ctx.strokeStyle="rgba(140,220,255,.8)"; ctx.lineWidth=2; ctx.stroke();
   }
 
-  // Drop shadow
-  ctx.beginPath();ctx.arc(p.x+2,p.y+r*.6,r*.95,0,Math.PI*2);
-  ctx.fillStyle="rgba(0,0,0,.18)";ctx.fill();
-
   // Grounded glow
   if(p.grounded){
-    ctx.save();ctx.shadowColor=p.color;ctx.shadowBlur=14;
-    ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle="transparent";ctx.fill();
-    ctx.restore();
+    ctx.beginPath();ctx.arc(p.x,p.y,r*1.1,0,Math.PI*2);
+    ctx.strokeStyle=p.color;ctx.globalAlpha=0.3;ctx.lineWidth=r*.2;ctx.stroke();
+    ctx.globalAlpha=1;
   }
 
   ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.spin);ctx.drawImage(sprite,-sprite.width*.5,-sprite.height*.5);ctx.restore();
@@ -1718,7 +1522,8 @@ function drawBall(p){
   ctx.save();
   ctx.font=`900 ${Math.max(11,r*.52)}px 'Nunito', sans-serif`;
   ctx.textAlign="center"; ctx.textBaseline="bottom";
-  ctx.shadowColor="rgba(0,0,0,.7)"; ctx.shadowBlur=5;
+  ctx.fillStyle="rgba(0,0,0,.6)";
+  ctx.fillText(p.label,p.x+1,labelY+1);
   ctx.fillStyle=p.id===0?"#ff8090":"#80aaff";
   ctx.fillText(p.label,p.x,labelY);
   ctx.restore();
@@ -1748,13 +1553,15 @@ function drawCountdown(){
   const scale=1+(1-frac)*.45;
   const alpha=frac>.18?1:frac/.18;
   const colors=["#ff4455","#ff9932","#ffdd44"];
-  const glows=["rgba(232,40,58,.7)","rgba(255,153,50,.7)","rgba(255,220,50,.7)"];
   ctx.save();
   ctx.globalAlpha=alpha;
   const fs=Math.min(180,width*.2)*scale;
   ctx.font=`900 ${fs}px 'Bebas Neue', sans-serif`;
   ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.shadowColor=glows[countNum-1];ctx.shadowBlur=52;
+  // Text outline effect instead of shadow
+  ctx.strokeStyle="rgba(0,0,0,.5)";
+  ctx.lineWidth=6;
+  ctx.strokeText(countNum,width*.5,height*.42);
   ctx.fillStyle=colors[countNum-1];
   ctx.fillText(countNum,width*.5,height*.42);
   if(state.suddenDeath) ctx.fillText("☠️",width*.5,height*.56);
@@ -1773,9 +1580,12 @@ function drawWinnerText(){
 
   ctx.save();
   const ns=Math.min(78,width*.1);
-  ctx.shadowColor=w.color;ctx.shadowBlur=38;
   ctx.font=`900 ${ns}px 'Bebas Neue','Nunito',sans-serif`;
   ctx.textAlign="center";ctx.textBaseline="middle";
+  // Outline effect
+  ctx.strokeStyle="rgba(0,0,0,.8)";
+  ctx.lineWidth=8;
+  ctx.strokeText(`${w.label} WINS!`,width*.5,height*.46);
   ctx.fillStyle=w.id===0?"#ff6e7d":"#6ea0ff";
   ctx.fillText(`${w.label} WINS!`,width*.5,height*.46);
   ctx.restore();
@@ -1883,124 +1693,9 @@ function setupTouch(){
   }
 }
 
-// ═════════════════════════════════════════════════════════════════
-//  MULTIPLAYER UI
-// ═════════════════════════════════════════════════════════════════
-
-const mpModal = document.getElementById("multiplayer-modal");
-const mpStatusEl = document.getElementById("mp-status");
-
-function showMultiplayerModal() {
-  if (mpModal) {
-    mpModal.classList.remove("hidden");
-  }
-  document.getElementById("mp-mode-select").style.display = "block";
-  document.getElementById("mp-host-screen").style.display = "none";
-  document.getElementById("mp-join-screen").style.display = "none";
-  document.getElementById("mp-connecting-screen").style.display = "none";
-}
-
-function closeMultiplayerModal() {
-  if (mpModal) {
-    mpModal.classList.add("hidden");
-  }
-}
-
-function showMpConnecting() {
-  document.getElementById("mp-mode-select").style.display = "none";
-  document.getElementById("mp-host-screen").style.display = "none";
-  document.getElementById("mp-join-screen").style.display = "none";
-  document.getElementById("mp-connecting-screen").style.display = "block";
-}
-
-function showMpStatus() {
-  if (mpStatusEl) mpStatusEl.style.display = "block";
-}
-
-async function handleMpHost() {
-  document.getElementById("mp-mode-select").style.display = "none";
-  document.getElementById("mp-host-screen").style.display = "block";
-  initMultiplayer(true);
-  const offerStr = await createOffer();
-  document.getElementById("mp-offer-text").value = offerStr;
-}
-
-async function handleMpJoin() {
-  document.getElementById("mp-mode-select").style.display = "none";
-  document.getElementById("mp-join-screen").style.display = "block";
-}
-
-async function handleProcessOffer() {
-  const offerStr = document.getElementById("mp-offer-input").value.trim();
-  if (!offerStr) {
-    alert("Please paste the host's offer");
-    return;
-  }
-  try {
-    initMultiplayer(false);
-    const answerStr = await createAnswer(offerStr);
-    document.getElementById("mp-answer-out").value = answerStr;
-    showMpConnecting();
-  } catch (err) {
-    alert("Failed to process offer: " + err.message);
-    console.error(err);
-  }
-}
-
-async function handleSubmitAnswer() {
-  const answerStr = document.getElementById("mp-answer-text").value.trim();
-  if (!answerStr) {
-    alert("Please paste the peer's answer");
-    return;
-  }
-  try {
-    await acceptAnswer(answerStr);
-    showMpConnecting();
-  } catch (err) {
-    alert("Failed to process answer: " + err.message);
-    console.error(err);
-  }
-}
-
 // ── Boot ─────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", function() {
-  window.addEventListener("resize", resize);
-  resize();
-  setupTouch();
-
-  // Show multiplayer modal on startup
-  showMultiplayerModal();
-
-  // Setup multiplayer button listeners
-  document.getElementById("mp-host-btn").addEventListener("click", handleMpHost);
-  document.getElementById("mp-join-btn").addEventListener("click", handleMpJoin);
-  document.getElementById("mp-single-btn").addEventListener("click", () => {
-    multiplayer.enabled = false;
-    closeMultiplayerModal();
-    resetMatch();
-  });
-
-  document.getElementById("mp-copy-offer").addEventListener("click", () => {
-    const text = document.getElementById("mp-offer-text").value;
-    navigator.clipboard.writeText(text).then(() => {
-      alert("Offer copied to clipboard!");
-    });
-  });
-
-  document.getElementById("mp-copy-answer").addEventListener("click", () => {
-    const text = document.getElementById("mp-answer-out").value;
-    navigator.clipboard.writeText(text).then(() => {
-      alert("Answer copied to clipboard!");
-    });
-  });
-
-  document.getElementById("mp-process-offer").addEventListener("click", handleProcessOffer);
-  document.getElementById("mp-submit-answer").addEventListener("click", handleSubmitAnswer);
-
-  document.getElementById("mp-back-host").addEventListener("click", showMultiplayerModal);
-  document.getElementById("mp-back-join").addEventListener("click", showMultiplayerModal);
-
-  // Start the game loop
-  requestAnimationFrame((t)=>{lastTime=t;requestAnimationFrame(loop);});
-});
-
+window.addEventListener("resize",resize);
+resize();
+setupTouch();
+resetMatch();
+requestAnimationFrame((t)=>{lastTime=t;requestAnimationFrame(loop);});
