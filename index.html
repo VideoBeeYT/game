@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a1628" />
+  <title>Sahur Ball ⚽</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --p1: #e8283a; --p1-glow: rgba(232,40,58,0.38);
+      --p2: #1855e8; --p2-glow: rgba(24,85,232,0.38);
+      --glass: rgba(6,16,30,0.74); --glass-b: rgba(255,255,255,0.10);
+      --dim: rgba(255,255,255,0.42);
+    }
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+    body { font-family: 'Nunito', system-ui, sans-serif; overflow: hidden; background: #040c1a; touch-action: none; user-select: none; -webkit-user-select: none; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+
+    /* ── HUD ── */
+    #hud { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 7px; padding: 10px; pointer-events: none; z-index: 20; }
+
+    .pcard {
+      flex: 0 0 auto; background: var(--glass); border: 1.5px solid var(--glass-b);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-radius: 18px; padding: 9px 13px 11px; min-width: 84px;
+      text-align: center; box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+      transition: box-shadow .25s;
+    }
+    .pcard.p1 { border-color: rgba(232,40,58,0.38); }
+    .pcard.p2 { border-color: rgba(24,85,232,0.38); }
+    .pcard.scored { animation: scorePop .45s ease; }
+    @keyframes scorePop { 0%{transform:scale(1)} 42%{transform:scale(1.15)} 100%{transform:scale(1)} }
+    .pcard.on-fire { box-shadow: 0 0 0 2px #ff9e20, 0 0 24px rgba(255,140,20,.65), 0 10px 28px rgba(0,0,0,.45) !important; }
+
+    .card-label { font-family:'Bebas Neue',sans-serif; font-size:clamp(12px,1.5vw,15px); letter-spacing:3px; color:var(--dim); margin-bottom:1px; }
+    .p1 .card-label { color:rgba(255,110,120,.85); }
+    .p2 .card-label { color:rgba(100,150,255,.85); }
+
+    .card-score { font-family:'Bebas Neue',sans-serif; font-size:clamp(44px,7vw,66px); line-height:1; letter-spacing:-1px; }
+    .p1 .card-score { color:#ff6e7d; text-shadow:0 0 22px rgba(232,40,58,.65); }
+    .p2 .card-score { color:#6ea0ff; text-shadow:0 0 22px rgba(24,85,232,.65); }
+
+    .pips { display:flex; gap:5px; justify-content:center; margin-top:6px; }
+    .pip { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.16); transition:background .22s,border-color .22s,box-shadow .22s; }
+    .p1 .pip.filled { background:#e8283a; border-color:#ff7080; box-shadow:0 0 6px rgba(232,40,58,.75); }
+    .p2 .pip.filled { background:#1855e8; border-color:#6ea0ff; box-shadow:0 0 6px rgba(24,85,232,.75); }
+    .pip.pop { animation:pipPop .38s ease; }
+    @keyframes pipPop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.45)} 100%{transform:scale(1);opacity:1} }
+
+    .fire-badge { font-size:clamp(14px,1.8vw,18px); margin-top:4px; min-height:20px; animation:firePulse .55s ease infinite alternate; }
+    @keyframes firePulse { from{transform:scale(1)} to{transform:scale(1.14)} }
+
+    /* ── CENTER ── */
+    #center-hud { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    #logo { font-family:'Bebas Neue',sans-serif; font-size:clamp(15px,2.4vw,24px); letter-spacing:5px; color:rgba(255,255,255,.9); text-shadow:0 0 24px rgba(120,200,255,.5),0 2px 4px rgba(0,0,0,.5); }
+    #controls-hint { font-size:clamp(8px,1vw,11px); color:var(--dim); text-align:center; letter-spacing:.3px; }
+    body.is-mobile #controls-hint { display:none; }
+
+    #warning { width:min(94vw,500px); padding:7px 16px; border-radius:10px; font-weight:900; font-size:clamp(11px,1.4vw,14px); text-align:center; color:#ffd090; background:rgba(160,20,0,.9); border:2px solid rgba(255,100,70,.9); backdrop-filter:blur(8px); opacity:0; transform:translateY(-8px) scale(.96); transition:opacity 130ms ease,transform 130ms ease; }
+    #warning.show { opacity:1; transform:translateY(0) scale(1); }
+
+    #event { width:min(94vw,560px); padding:9px 20px; border-radius:999px; font-weight:800; font-size:clamp(11px,1.5vw,16px); text-align:center; color:#fff; background:linear-gradient(90deg,#ff7b1f,#e8283a); border:2px solid rgba(255,255,255,.35); box-shadow:0 8px 28px rgba(200,50,20,.45),inset 0 1px 0 rgba(255,255,255,.2); opacity:0; transform:translateY(-8px) scale(.95); transition:opacity 150ms ease,transform 150ms ease; text-shadow:0 1px 3px rgba(0,0,0,.45); }
+    #event.show { opacity:1; transform:translateY(0) scale(1); animation:eventBounce .3s ease; }
+    @keyframes eventBounce { 0%{transform:scale(.9)} 60%{transform:scale(1.03)} 100%{transform:scale(1)} }
+
+    #challenge { font-size:clamp(10px,1.2vw,13px); font-weight:800; color:rgba(255,235,120,.9); text-align:center; min-height:14px; letter-spacing:.3px; }
+
+    /* ── TOUCH CONTROLS — hidden by default, JS adds .is-mobile ── */
+    #touch-controls { display:none; position:fixed; bottom:0; left:0; right:0; justify-content:space-between; padding:0 10px 16px; z-index:20; pointer-events:none; }
+    body.is-mobile #touch-controls { display:flex; }
+
+    .touch-group { display:flex; gap:5px; align-items:flex-end; pointer-events:all; }
+    .tbtn { width:64px; height:64px; border-radius:18px; background:rgba(255,255,255,.09); border:1.5px solid rgba(255,255,255,.16); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); color:rgba(255,255,255,.88); font-size:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:none; box-shadow:0 4px 14px rgba(0,0,0,.35); transition:background 70ms,transform 70ms,box-shadow 70ms; -webkit-user-select:none; }
+    .tbtn:active, .tbtn.held { background:rgba(255,255,255,.22); transform:scale(.89); box-shadow:0 2px 8px rgba(0,0,0,.25); }
+    .tbtn.jump { height:74px; font-size:24px; background:rgba(255,255,255,.12); }
+    .p1g .tbtn { border-color:rgba(232,40,58,.45); }
+    .p1g .tbtn:active,.p1g .tbtn.held { background:rgba(232,40,58,.28); }
+    .p2g .tbtn { border-color:rgba(24,85,232,.45); }
+    .p2g .tbtn:active,.p2g .tbtn.held { background:rgba(24,85,232,.28); }
+    @media (min-width:500px) { .tbtn{width:74px;height:74px} .tbtn.jump{height:84px} }
+
+    /* Multiplayer Modal */
+    #multiplayer-modal.hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="pcard p1" id="p1-card">
+      <div class="card-label">P1</div>
+      <div class="card-score" id="p1-score">0</div>
+      <div class="pips" id="p1-pips"></div>
+      <div class="fire-badge" id="p1-fire"></div>
+    </div>
+    <div id="center-hud">
+      <div id="logo">⚽ SAHUR BALL</div>
+      <div id="controls-hint">P1: A / D + W &nbsp;·&nbsp; P2: ← / → + ↑</div>
+      <div id="warning"></div>
+      <div id="event"></div>
+      <div id="challenge"></div>
+    </div>
+    <div class="pcard p2" id="p2-card">
+      <div class="card-label">P2</div>
+      <div class="card-score" id="p2-score">0</div>
+      <div class="pips" id="p2-pips"></div>
+      <div class="fire-badge" id="p2-fire"></div>
+    </div>
+  </div>
+
+  <div id="touch-controls">
+    <div class="touch-group p1g">
+      <button class="tbtn" id="p1-left"  aria-label="P1 Left">◀</button>
+      <button class="tbtn jump" id="p1-jump" aria-label="P1 Jump">▲</button>
+      <button class="tbtn" id="p1-right" aria-label="P1 Right">▶</button>
+    </div>
+    <div class="touch-group p2g">
+      <button class="tbtn" id="p2-left"  aria-label="P2 Left">◀</button>
+      <button class="tbtn jump" id="p2-jump" aria-label="P2 Jump">▲</button>
+      <button class="tbtn" id="p2-right" aria-label="P2 Right">▶</button>
+    </div>
+  </div>
+
+  <!-- Multiplayer Connection Modal -->
+  <div id="multiplayer-modal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:1000; display:flex; align-items:center; justify-content:center; pointer-events:all;">
+    <div style="background:rgba(6,16,30,0.95); border:2px solid rgba(255,255,255,0.2); border-radius:20px; padding:30px; max-width:500px; width:90%; backdrop-filter:blur(14px); text-align:center;">
+      <h2 style="color:#fff; margin:0 0 20px; font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px;">⚽ LAN MULTIPLAYER</h2>
+      
+      <div id="mp-mode-select" style="display:block;">
+        <p style="color:rgba(255,255,255,0.8); margin-bottom:25px; font-size:14px;">Connect with another player on your LAN network</p>
+        <button id="mp-host-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(232,40,58,0.8); color:#fff; border:2px solid #e8283a; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">HOST GAME</button>
+        <button id="mp-join-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(24,85,232,0.8); color:#fff; border:2px solid #1855e8; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">JOIN GAME</button>
+        <button id="mp-single-btn" style="width:100%; padding:14px; margin:10px 0; background:rgba(255,255,255,0.1); color:#fff; border:2px solid rgba(255,255,255,0.3); border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; transition:all 150ms;">SINGLE PLAYER</button>
+      </div>
+
+      <div id="mp-host-screen" style="display:none;">
+        <p style="color:rgba(255,255,255,0.7); margin-bottom:15px; font-size:13px;">Your connection offer:</p>
+        <textarea id="mp-offer-text" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#0f0; border:1px solid rgba(0,255,0,0.3); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
+        <button id="mp-copy-offer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">COPY OFFER</button>
+        <p style="color:rgba(255,255,255,0.6); margin:15px 0 10px; font-size:12px;">Waiting for peer answer...</p>
+        <textarea id="mp-answer-text" placeholder="Paste peer's answer here" style="width:100%; height:80px; padding:10px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
+        <button id="mp-submit-answer" style="width:100%; padding:10px; margin:10px 0; background:#e8283a; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">SUBMIT ANSWER</button>
+        <button id="mp-back-host" style="width:100%; padding:10px; margin-top:10px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-weight:bold; cursor:pointer;">← BACK</button>
+      </div>
+
+      <div id="mp-join-screen" style="display:none;">
+        <p style="color:rgba(255,255,255,0.7); margin-bottom:15px; font-size:13px;">Paste host's connection offer:</p>
+        <textarea id="mp-offer-input" placeholder="Paste offer here" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-family:monospace; font-size:11px; resize:none;"></textarea>
+        <button id="mp-process-offer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">PROCESS OFFER</button>
+        <p style="color:rgba(255,255,255,0.7); margin:15px 0 10px; font-size:12px;">Your answer (copy and send to host):</p>
+        <textarea id="mp-answer-out" style="width:100%; height:120px; padding:10px; background:rgba(0,0,0,0.3); color:#0f0; border:1px solid rgba(0,255,0,0.3); border-radius:8px; font-family:monospace; font-size:11px; resize:none;" readonly></textarea>
+        <button id="mp-copy-answer" style="width:100%; padding:10px; margin:10px 0; background:#1855e8; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">COPY ANSWER</button>
+        <button id="mp-back-join" style="width:100%; padding:10px; margin-top:10px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-weight:bold; cursor:pointer;">← BACK</button>
+      </div>
+
+      <div id="mp-connecting-screen" style="display:none; text-align:center;">
+        <p style="color:#6ea0ff; font-size:16px; margin-bottom:20px;">🔗 Connecting...</p>
+        <div style="width:40px; height:40px; border:3px solid rgba(110,160,255,0.3); border-top-color:#6ea0ff; border-radius:50%; margin:0 auto 20px; animation:spin 1s linear infinite;"></div>
+        <p style="color:rgba(255,255,255,0.7); font-size:12px;">Waiting for peer connection</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection status indicator -->
+  <div id="mp-status" style="position:fixed; bottom:20px; right:20px; background:rgba(100,200,100,0.9); color:#fff; padding:10px 15px; border-radius:8px; font-weight:bold; font-size:12px; z-index:100; display:none;">🔗 Connected</div>
+
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+
+  <script src="game.js"></script>
+</body>
+</html>
