@@ -1963,41 +1963,44 @@ async function handleSubmitAnswer() {
 }
 
 // ── Boot ─────────────────────────────────────────────────────────
-window.addEventListener("resize",resize);
-resize();
-setupTouch();
+document.addEventListener("DOMContentLoaded", function() {
+  window.addEventListener("resize", resize);
+  resize();
+  setupTouch();
 
-// Show multiplayer modal on startup
-showMultiplayerModal();
+  // Show multiplayer modal on startup
+  showMultiplayerModal();
 
-// Setup multiplayer button listeners
-document.getElementById("mp-host-btn").addEventListener("click", handleMpHost);
-document.getElementById("mp-join-btn").addEventListener("click", handleMpJoin);
-document.getElementById("mp-single-btn").addEventListener("click", () => {
-  multiplayer.enabled = false;
-  closeMultiplayerModal();
-  resetMatch();
-});
-
-document.getElementById("mp-copy-offer").addEventListener("click", () => {
-  const text = document.getElementById("mp-offer-text").value;
-  navigator.clipboard.writeText(text).then(() => {
-    alert("Offer copied to clipboard!");
+  // Setup multiplayer button listeners
+  document.getElementById("mp-host-btn").addEventListener("click", handleMpHost);
+  document.getElementById("mp-join-btn").addEventListener("click", handleMpJoin);
+  document.getElementById("mp-single-btn").addEventListener("click", () => {
+    multiplayer.enabled = false;
+    closeMultiplayerModal();
+    resetMatch();
   });
-});
 
-document.getElementById("mp-copy-answer").addEventListener("click", () => {
-  const text = document.getElementById("mp-answer-out").value;
-  navigator.clipboard.writeText(text).then(() => {
-    alert("Answer copied to clipboard!");
+  document.getElementById("mp-copy-offer").addEventListener("click", () => {
+    const text = document.getElementById("mp-offer-text").value;
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Offer copied to clipboard!");
+    });
   });
+
+  document.getElementById("mp-copy-answer").addEventListener("click", () => {
+    const text = document.getElementById("mp-answer-out").value;
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Answer copied to clipboard!");
+    });
+  });
+
+  document.getElementById("mp-process-offer").addEventListener("click", handleProcessOffer);
+  document.getElementById("mp-submit-answer").addEventListener("click", handleSubmitAnswer);
+
+  document.getElementById("mp-back-host").addEventListener("click", showMultiplayerModal);
+  document.getElementById("mp-back-join").addEventListener("click", showMultiplayerModal);
+
+  // Start the game loop
+  requestAnimationFrame((t)=>{lastTime=t;requestAnimationFrame(loop);});
 });
 
-document.getElementById("mp-process-offer").addEventListener("click", handleProcessOffer);
-document.getElementById("mp-submit-answer").addEventListener("click", handleSubmitAnswer);
-
-document.getElementById("mp-back-host").addEventListener("click", showMultiplayerModal);
-document.getElementById("mp-back-join").addEventListener("click", showMultiplayerModal);
-
-// Start the game loop
-requestAnimationFrame((t)=>{lastTime=t;requestAnimationFrame(loop);});
